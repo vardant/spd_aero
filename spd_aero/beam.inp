@@ -1,0 +1,5 @@
+  1.  1.	xmin. xmax [cm]
+  4.5 4.5	ymin, ymax [cm]
+ -0.  0.	zmin, zmax [cm]
+0. -4. 0.	px, py, pz [GeV]
+mu-    		particle

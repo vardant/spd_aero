@@ -1,0 +1,58 @@
+int gr_to_dig()
+{
+  Double_t y0gr = 1094 + (1094 - 633);//in pixels
+  Double_t d = 1094 - 633; // 1 main division in pixels
+  Double_t l_scat_real[35];
+  Double_t l_abs_real[35];
+  Double_t wl[35];
+  Double_t x[35];
+
+  FILE *abs = fopen("abs_length1.dat","w");
+  FILE *scat = fopen("scat_length1.dat","w");
+
+  for(int j = 0; j < 35; j++){
+    wl[j] = 0.2 + 0.02*j; 
+  }
+
+  Double_t l_scat_gr[35] = {1251., 1251., 1196., 1152., 1098., 1063., 1022., 977., 944.,
+			  899., 857., 817., 780., 745., 712., 683., 657., 
+			  632., 605., 573., 545., 520., 490., 468., 443., 
+			  415., 392., 371., 349., 330., 307., 289., 269., 
+			  251, 232};//in pixels
+  
+  /*
+  Double_t l_abs_gr[34] = {1036, 945, 853, 756, 658, 558, 535, 513, 
+			   497, 504, 505, 511, 514, 512, 515, 514, 
+			   517, 518, 520, 521, 525, 525, 523, 526, 
+			   528, 527, 524, 530, 526, 530, 535, 532,
+			   533, 536};
+*/
+
+Double_t l_abs_gr[35] = {1068, 1029, 924, 819, 733, 642, 516, 466, 451, 
+			   465, 485, 492, 503, 508, 508, 515, 514, 
+			   517, 518, 520, 521, 525, 525, 523, 526, 
+			   528, 527, 524, 530, 526, 530, 535, 532,
+			   533, 536};
+
+  for (int i = 0; i < 35; i++){
+    l_scat_real[i] = 10**((y0gr - l_scat_gr[i])/d-1);
+    l_abs_real[i] = 10**((y0gr - l_abs_gr[i])/d-1);
+    fprintf (scat, "%lf %lf\n",wl[i], l_scat_real[i] );
+    fprintf (abs,"%lf %lf\n",wl[i], l_abs_real[i] );
+    //   cout << "sattering length = " << l_scat_real[i]<<endl;
+    //cout << "sattering length = " <<(y0gr - l_scat_gr[i])/d <<endl;
+  }
+  
+  TGraph *gr = new TGraph(34, wl, l_abs_real); 
+  
+  TCanvas *c1 = new TCanvas("c1","",200, 10, 600,400);
+  c1->SetLogy();
+  
+  TAxis *xaxis = gr->GetXaxis();
+  xaxis -> SetTitle("wave length");
+  
+  gr->Draw("AC*");
+  c1->Update();
+    
+  return 0;
+}
