@@ -222,8 +222,9 @@ G4VPhysicalVolume* npsDetectorConstruction::Construct()
 
   const G4double hc = 1.239841857E-6*m*eV;   //(PDG)
 
-  //---Aerogel
+  //---Aerogel optics
 
+  /*
   const G4int nEntries = 20;
   G4double RIndex_Aerogel[nEntries];
   G4double Absorption[nEntries];
@@ -234,31 +235,39 @@ G4VPhysicalVolume* npsDetectorConstruction::Construct()
   G4double PhotonEnergy_scat[nEntries_scat];
   
   for(int i = 0; i < nEntries; i++){
-    RIndex_Aerogel[i] = 1.02;   //SPD Tech. Design Report
+  RIndex_Aerogel[i] = 1.02;   //SPD Tech. Design Report
   }
-
+  */
+    
   //Absorption length ---
 
+  vector<G4double> Absorption;
+  vector<G4double> PhotonEnergy;
+
   ifstream Indata_abs;
-  Indata_abs.open("./aero_inputs/SAN96-3.7-absl.dat");
+  Indata_abs.open("./aero_inputs/buzykaev/SAN96-3.7-absl.dat");
   if(!Indata_abs) { // file couldn't be opened
     G4cerr << "Error: Cannot read aerogel attenuation parameters" << G4endl;
     exit(1);
   }
 
-  G4double wl;
+  G4double wl, leng;
 
-  for (G4int k = nEntries - 1; k > -1; k-- ) {
-    Indata_abs >> wl >> Absorption[k];
+  while (Indata_abs >> wl >> leng) {
     wl *= nanometer;
-    ///    Absorption[k] /= 30;   ///
-    Absorption[k] *= cm;
-    PhotonEnergy[k] = hc/wl;
+    leng *= cm;
+    Absorption.push_back(leng);
+    PhotonEnergy.push_back(hc/wl);
   }
 
+  reverse(PhotonEnergy.begin(), PhotonEnergy.end());
+  reverse(Absorption.begin(), Absorption.end());
+
   Indata_abs.close();
-  
-  for(int i = 0; i < nEntries; i++){
+
+  cout << "Aerogel absorption:" << endl;
+  for(int i = 0; i < PhotonEnergy.size(); i++){
+    G4cout << "wl = " << hc/PhotonEnergy[i]/nm << "nm ";
     G4cout << "PhEn = " << PhotonEnergy[i]/eV << "eV  ";
     G4cout << "Abs = " << Absorption[i]/cm << "cm " << endl;
   }
@@ -266,35 +275,51 @@ G4VPhysicalVolume* npsDetectorConstruction::Construct()
   
   //Scattering length ---
 
+  vector<G4double> Scattering;
+  vector<G4double> PhotonEnergy_scat;
+
   ifstream Indata_scat;
-  Indata_scat.open("./aero_inputs/SAN96-scatl.dat");
+  Indata_scat.open("./aero_inputs/buzykaev/SAN96-scatl.dat");
   if(!Indata_scat) { // file couldn't be opened
     G4cerr << "Error: Cannot read aerogel scattering parameters" << G4endl;
     exit(1);
   }
   
-  for (G4int k = nEntries_scat - 1; k > -1; k-- ) {
-    Indata_scat >> wl >> Scattering[k];
+  while (Indata_scat >> wl >> leng) {
     wl *= nanometer;
-    Scattering[k] *= cm;
-    PhotonEnergy_scat[k] = hc/wl;
+    leng *= cm;
+    Scattering.push_back(leng);
+    PhotonEnergy_scat.push_back(hc/wl);
   }
 
+  reverse(PhotonEnergy_scat.begin(), PhotonEnergy_scat.end());
+  reverse(Scattering.begin(), Scattering.end());
+
   Indata_scat.close();
-  
-  for(int i = 0; i < nEntries_scat; i++){
+
+  cout << "Aerogel scattering:" << endl;
+  for(int i = 0; i < Scattering.size(); i++){
     G4cout << "PhEn = " << PhotonEnergy_scat[i]/eV << "eV  ";
     G4cout << "Scat = " << Scattering[i]/cm <<"cm  " << G4endl;
   }
   //  getchar();
-  
-  G4MaterialPropertiesTable* MPT_Aerogel = new G4MaterialPropertiesTable();
-  MPT_Aerogel->AddProperty("RINDEX", PhotonEnergy, RIndex_Aerogel, nEntries);
-  MPT_Aerogel->AddProperty("ABSLENGTH", PhotonEnergy, Absorption, nEntries);
-  MPT_Aerogel->AddProperty("RAYLEIGH", PhotonEnergy_scat, Scattering,
-			   nEntries_scat);
 
-  //Aerogel
+  // Refractive index -----
+  
+  vector<G4double> RIndex_Aerogel;
+  for (int i=0; i<Absorption.size(); i++)
+    RIndex_Aerogel.push_back(1.02);
+
+  const G4int nEntries = Absorption.size();
+  const G4int nEntries_scat = Scattering.size();
+
+  G4MaterialPropertiesTable* MPT_Aerogel = new G4MaterialPropertiesTable();
+  MPT_Aerogel->AddProperty("RINDEX", PhotonEnergy, RIndex_Aerogel);
+  MPT_Aerogel->AddProperty("ABSLENGTH", PhotonEnergy, Absorption);
+  MPT_Aerogel->AddProperty("RAYLEIGH", PhotonEnergy_scat, Scattering);
+
+  //Aerogel material
+  
   G4Material* Aerog = new G4Material("Aerogel", 0.0922*g/cm3, 3);   //for n=1.02
   Aerog->AddMaterial(SiO2, 62.5*perCent);
   Aerog->AddMaterial(H2O , 37.4*perCent);
@@ -304,7 +329,8 @@ G4VPhysicalVolume* npsDetectorConstruction::Construct()
 
   G4cout << "===== MPT_Aerogel: ============================" << G4endl;
   MPT_Aerogel->DumpTable();
-
+  //  getchar();
+  
   //Wavelength shifter, PMMA base material ---
 
   //Refractive index of PMMA for wl>400nm: https://refractiveindex.info/
@@ -328,58 +354,66 @@ G4VPhysicalVolume* npsDetectorConstruction::Construct()
 
   //PMMA refractive index from Roychowdhury et al. at Brgham Young University
 
-  const int n_wls_ri = 449;
-  G4double PhotonEnergy_WLS[n_wls_ri];
-  G4double RIndex_WLS[n_wls_ri];
+  vector<G4double> PhotonEnergy_WLS;
+  vector<G4double> RIndex_WLS;
 
   ifstream Indata_ri;
-  Indata_ri.open("./wls_inputs/ri_pmma.dat");
+  Indata_ri.open("./wls_inputs/buzykaev/ri_pmma.dat");
   if(!Indata_ri) { // file couldn't be opened
     G4cerr << "Error: Cannot read WLS refractive indexes" << G4endl;
     exit(1);
   }
 
-  for (G4int k = n_wls_ri - 1; k > -1; k-- ) {
-    Indata_ri >> wl >> RIndex_WLS[k];
-    //    cout << wl << "  " << RIndex_WLS[k] << endl;
-    //    getchar();
+  G4double ri;
+  
+  while (Indata_ri >> wl >> ri) {
     wl *= nanometer;
-    PhotonEnergy_WLS[k] = hc/wl;
+    RIndex_WLS.push_back(ri);
+    PhotonEnergy_WLS.push_back(hc/wl);
   }
 
+  reverse(PhotonEnergy_WLS.begin(), PhotonEnergy_WLS.end());
+  reverse(RIndex_WLS.begin(), RIndex_WLS.end());
+
   Indata_ri.close();
+
+  const G4int n_wls_ri = RIndex_WLS.size();
 
   cout << "WLS ref. index:" << endl;
   for(int i = 0; i < n_wls_ri; i++) {
     double wl = hc/PhotonEnergy_WLS[i];
     cout << PhotonEnergy_WLS[i]/eV << " ev  " << wl/nm << " nm  "
-	 << RIndex_WLS[i] << endl;
+  	 << RIndex_WLS[i] << endl;
   }
   //  getchar();
 
   //WLS-BBQ absorption length.
 
-  const int n_absl_bbq = 27;
-  double wl_absl_bbq[n_absl_bbq];
-  double absl_bbq[n_absl_bbq];
-  double PhotonEnergy_absl_bbq[n_absl_bbq];
+  vector<double> wl_absl_bbq;
+  vector<double> absl_bbq;
+  vector<double> PhotonEnergy_absl_bbq;
 
   ifstream Indata_absl_bbq;
-  Indata_absl_bbq.open("./wls_inputs/absl-bbq.dat");
+  Indata_absl_bbq.open("./wls_inputs/buzykaev/absl-bbq.dat");
   if(!Indata_absl_bbq) { // file couldn't be opened
     G4cerr << "Error: Cannot read WLS-BBQ absorption parameters" << G4endl;
     exit(1);
   }
 
-  for (G4int k = n_absl_bbq - 1; k > -1; k-- ) {
-    Indata_absl_bbq >> wl >> absl_bbq[k];
+  while (Indata_absl_bbq >> wl >> leng) {
     wl *= nanometer;
-    absl_bbq[k] *= cm;
-    PhotonEnergy_absl_bbq[k] = hc/wl;
+    leng *= cm;
+    absl_bbq.push_back(leng);
+    PhotonEnergy_absl_bbq.push_back(hc/wl);
   }
+
+  reverse(PhotonEnergy_absl_bbq.begin(), PhotonEnergy_absl_bbq.end());
+  reverse(absl_bbq.begin(), absl_bbq.end());
 
   Indata_absl_bbq.close();
 
+  const int n_absl_bbq = absl_bbq.size();
+  
   cout << "WLS-BBQ absorption:" << endl;
   for(int i = 0; i < n_absl_bbq; i++){
     G4cout << "PhEn = " << PhotonEnergy_absl_bbq[i]/eV << "eV  ";
@@ -389,27 +423,31 @@ G4VPhysicalVolume* npsDetectorConstruction::Construct()
 
   //PMMA absorption length.
 
-  const int n_absl_pmma = 183;
-  double wl_absl_pmma[n_absl_pmma];
-  double absl_pmma[n_absl_pmma];
-  double PhotonEnergy_absl_pmma[n_absl_pmma];
+  vector<double> wl_absl_pmma;
+  vector<double> absl_pmma;
+  vector<double> PhotonEnergy_absl_pmma;
 
   ifstream Indata_absl_pmma;
-  Indata_absl_pmma.open("./wls_inputs/absl-pmma.dat");
+  Indata_absl_pmma.open("./wls_inputs/buzykaev/absl-pmma.dat");
   if(!Indata_absl_pmma) { // file couldn't be opened
     G4cerr << "Error: Cannot read PMMA absorption parameters" << G4endl;
     exit(1);
   }
 
-  for (G4int k = n_absl_pmma - 1; k > -1; k-- ) {
-    Indata_absl_pmma >> wl >> absl_pmma[k];
+  while (Indata_absl_pmma >> wl >> leng) {
     wl *= nanometer;
-    absl_pmma[k] *= cm;
-    PhotonEnergy_absl_pmma[k] = hc/wl;
+    leng *= cm;
+    absl_pmma.push_back(leng);
+    PhotonEnergy_absl_pmma.push_back(hc/wl);
   }
+
+  reverse(PhotonEnergy_absl_pmma.begin(), PhotonEnergy_absl_pmma.end());
+  reverse(absl_pmma.begin(), absl_pmma.end());
 
   Indata_absl_pmma.close();
 
+  const int n_absl_pmma = absl_pmma.size();
+  
   cout << "PMMA absorption:" << endl;
   for(int i = 0; i < n_absl_pmma; i++){
     G4cout << "PhEn = " << PhotonEnergy_absl_pmma[i]/eV << "eV  ";
@@ -419,28 +457,30 @@ G4VPhysicalVolume* npsDetectorConstruction::Construct()
 
   //WLS absorption length, estimated as absl_bbq*absl_pmma/(absl_bbq+absl_pmma).
 
-  const int n_absl_wls = 183;
-  double wl_absl_wls[n_absl_wls];
-  double absl_wls[n_absl_wls];
-  double PhotonEnergy_absl_wls[n_absl_wls];
+  vector<double> wl_absl_wls;
+  vector<double> absl_wls;
+  vector<double> PhotonEnergy_absl_wls;
 
   ifstream Indata_absl_wls;
-  Indata_absl_wls.open("./wls_inputs/absl-wls.dat");
+  Indata_absl_wls.open("./wls_inputs/buzykaev/absl-wls.dat");
   if(!Indata_absl_wls) { // file couldn't be opened
     G4cerr << "Error: Cannot read WLS absorption parameters" << G4endl;
     exit(1);
   }
 
-  for (G4int k = n_absl_wls - 1; k > -1; k-- ) {
-    Indata_absl_wls >> wl >> absl_wls[k];
-    //    cout << wl << "  " <<  absl_wls[k] << endl;
-    //    getchar();
+  while (Indata_absl_wls >> wl >> leng) {
     wl *= nanometer;
-    absl_wls[k] *= cm;
-    PhotonEnergy_absl_wls[k] = hc/wl;
+    leng *= cm;
+    absl_wls.push_back(leng);
+    PhotonEnergy_absl_wls.push_back(hc/wl);
   }
 
+  reverse(PhotonEnergy_absl_wls.begin(), PhotonEnergy_absl_wls.end());
+  reverse(absl_wls.begin(), absl_wls.end());
+
   Indata_absl_wls.close();
+
+  const int n_absl_wls = absl_wls.size();
 
   cout << "WLS absorption:" << endl;
   for(int i = 0; i < n_absl_wls; i++){
@@ -451,25 +491,30 @@ G4VPhysicalVolume* npsDetectorConstruction::Construct()
 
   //WLS emission.
 
-  const int n_emission = 44;
-  double wl_emission[n_emission];
-  double emission[n_emission];
-  double PhotonEnergy_emission[n_emission];
+  vector<double> wl_emission;
+  vector<double> emission;
+  vector<double> PhotonEnergy_emission;
 
   ifstream Indata_emission;
-  Indata_emission.open("./wls_inputs/emission-bbq.dat");
+  Indata_emission.open("./wls_inputs/buzykaev/emission-bbq.dat");
   if(!Indata_emission) { // file couldn't be opened
     G4cerr << "Error: Cannot read WLS emission parameters" << G4endl;
     exit(1);
   }
 
-  for (G4int k = n_emission - 1; k > -1; k-- ) {
-    Indata_emission >> wl >> emission[k];
+  while (Indata_emission >> wl >> leng) {
     wl *= nanometer;
-    PhotonEnergy_emission[k] = hc/wl;
+    leng *= cm;
+    emission.push_back(leng);
+    PhotonEnergy_emission.push_back(hc/wl);
   }
 
+  reverse(PhotonEnergy_emission.begin(), PhotonEnergy_emission.end());
+  reverse(emission.begin(), emission.end());
+
   Indata_emission.close();
+
+  const int n_emission = emission.size();
 
   cout << "WLS emission:" << endl;
   for(int i = 0; i < n_emission; i++){
@@ -479,39 +524,40 @@ G4VPhysicalVolume* npsDetectorConstruction::Construct()
   //  getchar();
 
   G4MaterialPropertiesTable* MPT_WLS = new G4MaterialPropertiesTable();
-  MPT_WLS->AddProperty("RINDEX", PhotonEnergy_WLS, RIndex_WLS, n_wls_ri);
+  MPT_WLS->AddProperty("RINDEX", PhotonEnergy_WLS, RIndex_WLS);
   ///  MPT_WLS->AddProperty("ABSLENGTH", PhotonEnergy_absl_wls, absl_wls,
   ///		       n_absl_wls);
-  ///  MPT_WLS->AddProperty("ABSLENGTH", PhotonEnergy_absl_pmma, absl_pmma,
-  ///		       n_absl_pmma);
-  ///  MPT_WLS->AddProperty("WLSABSLENGTH", PhotonEnergy_absl_bbq, absl_bbq,
-  ///		       n_absl_bbq);
-  MPT_WLS->AddProperty("WLSABSLENGTH", PhotonEnergy_absl_wls, absl_wls,
-		       n_absl_wls);
-  MPT_WLS->AddProperty("WLSCOMPONENT", PhotonEnergy_emission, emission,
-  		       n_emission);
+  MPT_WLS->AddProperty("ABSLENGTH", PhotonEnergy_absl_pmma, absl_pmma);
+  MPT_WLS->AddProperty("WLSABSLENGTH", PhotonEnergy_absl_bbq, absl_bbq);
+  ///MPT_WLS->AddProperty("WLSABSLENGTH",&PhotonEnergy_absl_wls[0],&absl_wls[0],
+  ///		       n_absl_wls);
+  MPT_WLS->AddProperty("WLSCOMPONENT", PhotonEnergy_emission, emission);
   MPT_WLS->AddConstProperty("WLSTIMECONSTANT", 0.5*ns);
 
   WLS->SetMaterialPropertiesTable(MPT_WLS);
 
   G4cout << "===== MPT_WLS: ============================" << G4endl;
   MPT_WLS->DumpTable();
-
+  //  getchar();
+  
   // Air
   // 
   G4Material* Air = new G4Material("Air", density=1.29*mg/cm3, nelements=2);
   Air->AddElement(N, 70.*perCent);
   Air->AddElement(O, 30.*perCent);
 
-  G4double rindAir[nEntries];
+  vector<G4double> rindAir;
   for (G4int i=0; i<nEntries; i++) {
-    rindAir[i] = gapRefInd;   //Air @ STP normally
+    rindAir.push_back(gapRefInd);   //Air @ STP normally
   };
   G4MaterialPropertiesTable *AirMPT = new G4MaterialPropertiesTable();
-  ///  AirMPT -> AddProperty("RINDEX",PhotonEnergy,rindAir,52);
-  AirMPT -> AddProperty("RINDEX",PhotonEnergy,rindAir,nEntries);
+  AirMPT -> AddProperty("RINDEX", PhotonEnergy, rindAir);
   Air -> SetMaterialPropertiesTable(AirMPT);
 
+  G4cout << "===== AirMPT: ============================" << G4endl;
+  AirMPT->DumpTable();
+  //  getchar();
+  
   // Glass
   //
 
@@ -520,17 +566,23 @@ G4VPhysicalVolume* npsDetectorConstruction::Construct()
   Glass->AddElement(Si, 1);
   Glass->AddElement(O,  2);
 
-  G4double rindGlass[nEntries];
+  vector<G4double> rindGlass;
   for (G4int i=0; i<nEntries; i++) {
-    rindGlass[i] = 1.525;              //average of 1.51-1.54
+    rindGlass.push_back(1.525);              //average of 1.51-1.54
   };
 
   G4MaterialPropertiesTable *GlassMPT = new G4MaterialPropertiesTable();
-  GlassMPT -> AddProperty("RINDEX",PhotonEnergy,rindGlass,nEntries);
+  GlassMPT -> AddProperty("RINDEX", PhotonEnergy ,rindGlass);
   Glass -> SetMaterialPropertiesTable(GlassMPT);
 
+  G4cout << "===== GlassMPT: ============================" << G4endl;
+  GlassMPT->DumpTable();
+  //  getchar();
+  
+  //Optical glue, or grease ---------
+  
   G4Material* OpticalGlue;
-  G4double rindGlue[nEntries];
+  vector<G4double> rindGlue;
 
   if (phDetFlag == 0) {
 
@@ -541,7 +593,7 @@ G4VPhysicalVolume* npsDetectorConstruction::Construct()
     OpticalGlue->AddElement(Si, 1); //not known
 
     for (G4int i=0; i<nEntries; i++) {
-      rindGlue[i] = 1.465;
+      rindGlue.push_back(1.465);
     };
 
   }
@@ -557,14 +609,18 @@ G4VPhysicalVolume* npsDetectorConstruction::Construct()
     OpticalGlue->AddElement(H , 6);
   
     for (G4int i=0; i<nEntries; i++) {
-      rindGlue[i] = 1.4;
+      rindGlue.push_back(1.4);
     };
   }
 
   G4MaterialPropertiesTable *GlueMPT = new G4MaterialPropertiesTable();
-  GlueMPT -> AddProperty("RINDEX",PhotonEnergy,rindGlue,nEntries);
+  GlueMPT -> AddProperty("RINDEX", PhotonEnergy, rindGlue);
   OpticalGlue -> SetMaterialPropertiesTable(GlueMPT);
 
+  G4cout << "===== GlueMPT: ============================" << G4endl;
+  GlueMPT->DumpTable();
+  //  getchar();
+  
   // Optical insulation
   density = 1.38;   //from goodfellow
   G4Material* PVF = new G4Material("Polyvinyl fluoride",density,ncomponents=3);
@@ -580,14 +636,18 @@ G4VPhysicalVolume* npsDetectorConstruction::Construct()
   if (subRefrIndex != 0.) {
     
     //Mylar refractive index.
-    G4double rindMylar[nEntries];
+    vector<G4double> rindMylar;
     for (G4int i=0; i<nEntries; i++) {
-      rindMylar[i] = subRefrIndex;
+      rindMylar.push_back(subRefrIndex);
     };
 
     G4MaterialPropertiesTable *MylarMPT = new G4MaterialPropertiesTable();
-    MylarMPT -> AddProperty("RINDEX",PhotonEnergy,rindMylar,nEntries);
+    MylarMPT -> AddProperty("RINDEX", PhotonEnergy, rindMylar);
     Mylar -> SetMaterialPropertiesTable(MylarMPT);
+
+    G4cout << "===== MylarMPT: ============================" << G4endl;
+    MylarMPT->DumpTable();
+    //    getchar();
   }
 
   // Bialcali, the photochathode material
@@ -868,7 +928,8 @@ G4VPhysicalVolume* npsDetectorConstruction::Construct()
   G4cout << "===== ReflectorMPT: ============================" << G4endl;
   ReflectorMPT->DumpTable();
   Reflector->DumpInfo();
-
+  //  getchar();
+  
   if (subRefrIndex == 0.) {
     // Reflective front surface of Mylar.
     new G4LogicalSkinSurface("Reflector",mylar_log,Reflector);
@@ -968,6 +1029,10 @@ G4VPhysicalVolume* npsDetectorConstruction::Construct()
   surfCat -> SetMaterialPropertiesTable(surfCatMPT);
 
   new G4LogicalSkinSurface("Cathode",Cathode_log,surfCat);
+
+  G4cout << "===== surfCatMPT: ============================" << G4endl;
+  surfCatMPT->DumpTable();
+  //  getchar();
 
   expHall_log->SetVisAttributes (G4VisAttributes::GetInvisible());
   counter_log->SetVisAttributes (G4VisAttributes::GetInvisible());
