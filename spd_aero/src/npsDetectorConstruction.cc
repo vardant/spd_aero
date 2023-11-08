@@ -217,47 +217,35 @@ G4VPhysicalVolume* npsDetectorConstruction::Construct()
   WLS->AddElement(H, 8);
   WLS->AddElement(O, 2);
 
-  //Refractive index for wl>400nm: https://refractiveindex.info/
-  //?shelf=organic&book=poly(methyl_methacrylate)&page=Szczurowski
-
   const G4double hc = 1.239841857E-6*m*eV;   //(PDG)
 
   //---Aerogel optics
 
-  /*
-  const G4int nEntries = 20;
-  G4double RIndex_Aerogel[nEntries];
-  G4double Absorption[nEntries];
-  G4double PhotonEnergy[nEntries];
-  
-  const G4int nEntries_scat = 25;
-  G4double Scattering[nEntries_scat];
-  G4double PhotonEnergy_scat[nEntries_scat];
-  
-  for(int i = 0; i < nEntries; i++){
-  RIndex_Aerogel[i] = 1.02;   //SPD Tech. Design Report
-  }
-  */
-    
   //Absorption length ---
 
   vector<G4double> Absorption;
   vector<G4double> PhotonEnergy;
 
   ifstream Indata_abs;
-  Indata_abs.open("./aero_inputs/buzykaev/SAN96-3.7-absl.dat");
+  ///  Indata_abs.open("./aero_inputs/buzykaev/SAN96-3.7-absl.dat");
+  Indata_abs.open("./aero_inputs/barnyakov/labs_aerogel_10300.dat");
   if(!Indata_abs) { // file couldn't be opened
     G4cerr << "Error: Cannot read aerogel attenuation parameters" << G4endl;
     exit(1);
   }
 
-  G4double wl, leng;
+  G4double wl;
+  G4double en, leng;
 
-  while (Indata_abs >> wl >> leng) {
+  string line;
+  for (int i=0; i<5; i++)
+    getline(Indata_abs, line);
+  while(Indata_abs >> wl >> en >> leng) {
     wl *= nanometer;
-    leng *= cm;
+    en *= eV;
+    leng *= mm;
+    PhotonEnergy.push_back(en);
     Absorption.push_back(leng);
-    PhotonEnergy.push_back(hc/wl);
   }
 
   reverse(PhotonEnergy.begin(), PhotonEnergy.end());
@@ -279,17 +267,21 @@ G4VPhysicalVolume* npsDetectorConstruction::Construct()
   vector<G4double> PhotonEnergy_scat;
 
   ifstream Indata_scat;
-  Indata_scat.open("./aero_inputs/buzykaev/SAN96-scatl.dat");
+  ///  Indata_scat.open("./aero_inputs/buzykaev/SAN96-scatl.dat");
+  Indata_scat.open("./aero_inputs/barnyakov/lsc_aerogel_10300.dat");
   if(!Indata_scat) { // file couldn't be opened
     G4cerr << "Error: Cannot read aerogel scattering parameters" << G4endl;
     exit(1);
   }
   
-  while (Indata_scat >> wl >> leng) {
+  for (int i=0; i<5; i++)
+    getline(Indata_scat, line);
+  while(Indata_scat >> wl >> en >> leng) {
     wl *= nanometer;
-    leng *= cm;
+    en *= eV;
+    leng *= mm;
+    PhotonEnergy_scat.push_back(en);
     Scattering.push_back(leng);
-    PhotonEnergy_scat.push_back(hc/wl);
   }
 
   reverse(PhotonEnergy_scat.begin(), PhotonEnergy_scat.end());
@@ -306,15 +298,45 @@ G4VPhysicalVolume* npsDetectorConstruction::Construct()
 
   // Refractive index -----
   
-  vector<G4double> RIndex_Aerogel;
-  for (int i=0; i<Absorption.size(); i++)
-    RIndex_Aerogel.push_back(1.02);
+  ///  vector<G4double> RIndex_Aerogel;
+  ///  for (int i=0; i<Absorption.size(); i++)
+  ///    RIndex_Aerogel.push_back(1.02);
 
-  const G4int nEntries = Absorption.size();
-  const G4int nEntries_scat = Scattering.size();
+  vector<G4double> RIndex_Aerogel;
+  vector<G4double> PhotonEnergy_ri;
+
+  ifstream Indata_ri_aero;
+  ///  Indata_ri_aero.open("./aero_inputs/barnyakov/ri_aerogel_10300.dat");
+  Indata_ri_aero.open("./aero_inputs/ri_aerogel_10200_const.dat");
+  if(!Indata_ri_aero) { // file couldn't be opened
+    G4cerr << "Error: Cannot read aerogel ref. index parameters" << G4endl;
+    exit(1);
+  }
+  
+  for (int i=0; i<5; i++)
+    getline(Indata_ri_aero, line);
+  while(Indata_ri_aero >> wl >> en >> leng) {
+    en *= eV;
+    PhotonEnergy_ri.push_back(en);
+    RIndex_Aerogel.push_back(leng);
+  }
+
+  reverse(PhotonEnergy_ri.begin(), PhotonEnergy_ri.end());
+  reverse(RIndex_Aerogel.begin(), RIndex_Aerogel.end());
+
+  Indata_ri_aero.close();
+
+  cout << "Aerogel refractive index:" << endl;
+  for(int i = 0; i < RIndex_Aerogel.size(); i++){
+    G4cout << "PhEn = " << PhotonEnergy_ri[i]/eV << "eV  ";
+    G4cout << "n = " << RIndex_Aerogel[i] << G4endl;
+  }
+  //  getchar();
+
+  const G4int nEntries = RIndex_Aerogel.size();
 
   G4MaterialPropertiesTable* MPT_Aerogel = new G4MaterialPropertiesTable();
-  MPT_Aerogel->AddProperty("RINDEX", PhotonEnergy, RIndex_Aerogel);
+  MPT_Aerogel->AddProperty("RINDEX", PhotonEnergy_ri, RIndex_Aerogel);
   MPT_Aerogel->AddProperty("ABSLENGTH", PhotonEnergy, Absorption);
   MPT_Aerogel->AddProperty("RAYLEIGH", PhotonEnergy_scat, Scattering);
 
@@ -357,16 +379,16 @@ G4VPhysicalVolume* npsDetectorConstruction::Construct()
   vector<G4double> PhotonEnergy_WLS;
   vector<G4double> RIndex_WLS;
 
-  ifstream Indata_ri;
-  Indata_ri.open("./wls_inputs/buzykaev/ri_pmma.dat");
-  if(!Indata_ri) { // file couldn't be opened
+  ifstream Indata_ri_pmma;
+  Indata_ri_pmma.open("./wls_inputs/from_elswere/ri_pmma.dat");
+  if(!Indata_ri_pmma) { // file couldn't be opened
     G4cerr << "Error: Cannot read WLS refractive indexes" << G4endl;
     exit(1);
   }
 
   G4double ri;
   
-  while (Indata_ri >> wl >> ri) {
+  while (Indata_ri_pmma >> wl >> ri) {
     wl *= nanometer;
     RIndex_WLS.push_back(ri);
     PhotonEnergy_WLS.push_back(hc/wl);
@@ -375,7 +397,7 @@ G4VPhysicalVolume* npsDetectorConstruction::Construct()
   reverse(PhotonEnergy_WLS.begin(), PhotonEnergy_WLS.end());
   reverse(RIndex_WLS.begin(), RIndex_WLS.end());
 
-  Indata_ri.close();
+  Indata_ri_pmma.close();
 
   const G4int n_wls_ri = RIndex_WLS.size();
 
@@ -428,7 +450,8 @@ G4VPhysicalVolume* npsDetectorConstruction::Construct()
   vector<double> PhotonEnergy_absl_pmma;
 
   ifstream Indata_absl_pmma;
-  Indata_absl_pmma.open("./wls_inputs/buzykaev/absl-pmma.dat");
+  ///  Indata_absl_pmma.open("./wls_inputs/from_elswere/absl-pmma.dat");
+  Indata_absl_pmma.open("./wls_inputs/barnyakov/absl_pmma.dat");
   if(!Indata_absl_pmma) { // file couldn't be opened
     G4cerr << "Error: Cannot read PMMA absorption parameters" << G4endl;
     exit(1);
@@ -456,13 +479,13 @@ G4VPhysicalVolume* npsDetectorConstruction::Construct()
   //  getchar();
 
   //WLS absorption length, estimated as absl_bbq*absl_pmma/(absl_bbq+absl_pmma).
-
+  /*
   vector<double> wl_absl_wls;
   vector<double> absl_wls;
   vector<double> PhotonEnergy_absl_wls;
 
   ifstream Indata_absl_wls;
-  Indata_absl_wls.open("./wls_inputs/buzykaev/absl-wls.dat");
+  Indata_absl_wls.open("./wls_inputs/from_elswere/absl-wls.dat");
   if(!Indata_absl_wls) { // file couldn't be opened
     G4cerr << "Error: Cannot read WLS absorption parameters" << G4endl;
     exit(1);
@@ -488,7 +511,8 @@ G4VPhysicalVolume* npsDetectorConstruction::Construct()
     G4cout << "Absl = " << absl_wls[i]/cm << "cm" << endl;
   }
   //  getchar();
-
+  */
+  
   //WLS emission.
 
   vector<double> wl_emission;
